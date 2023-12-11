@@ -8,8 +8,6 @@ from sklearn.cluster import KMeans
 import numpy as np
 import matplotlib.pyplot as plt
 
-def choose_optimal_num_clusters(coordinates):
-    return optimal_num_clusters
 
 # Original code for loading and creating DataFrame
 data = pd.read_csv('export.csv', header=None)
@@ -26,8 +24,31 @@ data['Timestamp'] = pd.to_datetime(data['Timestamp'])
 coordinates = data[['Longitude', 'Latitude']]
 
 # Uncomment the next line and comment out the elbow method code
+
+def choose_optimal_num_clusters(coordinates):
+    # Elbow method to find optimal number of clusters
+    inertia_values = []
+    cluster_range = range(2, 51)  # You can adjust the range of cluster numbers
+    for num_clusters in cluster_range:
+        kmeans = KMeans(n_clusters=num_clusters, random_state=42)  # Set a fixed random seed (e.g., 42)
+        kmeans.fit(coordinates)
+        inertia_values.append(kmeans.inertia_)
+
+    # Plot the elbow curve
+    plt.figure(figsize=(10, 6))
+    plt.plot(cluster_range, inertia_values, marker='o')
+    plt.title('Elbow Method For Optimal k')
+    plt.xlabel('Number of Clusters (k)')
+    plt.ylabel('Sum of Squared Distances (Inertia)')
+    plt.grid(True)
+    plt.show()
+
+    # Choose the number of clusters with the "elbow" point
+    optimal_num_clusters = int(input("Enter the optimal number of clusters based on the elbow method: "))
+    return optimal_num_clusters
+
+#optimal_num_clusters = choose_optimal_num_clusters(coordinates)
 optimal_num_clusters = 10
-# optimal_num_clusters = choose_optimal_num_clusters(coordinates)
 
 # Perform k-means clustering with the optimal number of clusters
 kmeans = KMeans(n_clusters=optimal_num_clusters, random_state=42)  # Set the same random seed
