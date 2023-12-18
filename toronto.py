@@ -5,6 +5,9 @@ import folium
 from folium.plugins import MarkerCluster
 import pandas as pd
 import csv
+from prophet.serialize import model_from_json
+from prophet.plot import plot_plotly, plot_components_plotly
+import plotly.express as px
 from sklearn.cluster import KMeans
 
 data = pd.read_csv('export.csv', header=None)
@@ -25,20 +28,51 @@ data['Cluster'] = clusters
 # Count the points in each cluster
 cluster_counts = pd.Series(clusters).value_counts()
 
+
+# Spark data analysis dataframes
+neighbourhood_frequencies = pd.read_csv('spark_data/neighbourhood_freq.csv')
+weekday_frequencies = pd.read_csv('spark_data/weekday_freq.csv')
+
+neighbourhood_fig = px.bar(neighbourhood_frequencies, x='NEIGHBOURHOOD_158', y='count', title="Accident frequency per neighbourhood")
+neighbourhood_fig.update_layout(xaxis_title="Neighbourhood", yaxis_title="Accident count")
+
+weekday_fig = px.bar(weekday_frequencies, x='OCC_DOW', y='count', title="Accident frequency per weekday")
+weekday_fig.update_layout(xaxis_title="Weekday", yaxis_title="Accident count")
+
+def get_prophet_plotlys():
+    with open('spark_data/model.json') as f:
+        prophet_model = model_from_json(f.read())
+    future = prophet_model.make_future_dataframe(periods=365)
+    forecast = prophet_model.predict(future)
+    return plot_plotly(prophet_model, forecast), plot_components_plotly(prophet_model, forecast)
+
+prophet_trend, prophet_components = get_prophet_plotlys()
+
 app = dash.Dash(__name__)
 # Create a Dash web application
 app.layout = html.Div([
     html.H1("Toronto Cluster Map Dashboard"),
+    html.Div([
+        dcc.DatePickerRange(
+            id='date-picker-range',
+            start_date=df['Timestamp'].min(),
+            end_date=df['Timestamp'].max(),
+            display_format='YYYY-MM-DD',
+            style={'margin': '10px'}
+        ),
 
-    dcc.DatePickerRange(
-        id='date-picker-range',
-        start_date=df['Timestamp'].min(),
-        end_date=df['Timestamp'].max(),
-        display_format='YYYY-MM-DD',
-        style={'margin': '10px'}
-    ),
-
-    html.Div(id='map-container')
+        html.Div(id='map-container')    
+    ]),
+    html.H1("Toronto Accident Frequencies"),
+    html.Div([
+        dcc.Graph(figure=neighbourhood_fig),
+        dcc.Graph(figure=weekday_fig)
+    ]),
+    html.H1("Toronto Accident Predictions"),
+    html.Div([
+        dcc.Graph(figure=prophet_trend),
+        dcc.Graph(figure=prophet_components)
+    ])
 ])
 
 # Callback to update the map based on the selected date range

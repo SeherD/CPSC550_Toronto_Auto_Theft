@@ -1,0 +1,5 @@
+dash
+folium
+pandas==1.4.2
+prophet
+scikit-learn
