@@ -30,7 +30,9 @@ weekday_fig.update_layout(xaxis_title="Weekday", yaxis_title="Theft count")
 
 def get_prophet_plotlys():
     with open('spark_data/model.json') as f:
+        # read serialized model
         prophet_model = model_from_json(f.read())
+    # create rows for future and populate with predictions
     future = prophet_model.make_future_dataframe(periods=365)
     forecast = prophet_model.predict(future)
     return plot_plotly(prophet_model, forecast), plot_components_plotly(prophet_model, forecast)
