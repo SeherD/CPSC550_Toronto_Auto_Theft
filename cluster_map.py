@@ -8,33 +8,32 @@ from sklearn.cluster import KMeans
 import numpy as np
 import matplotlib.pyplot as plt
 
-
-# Original code for loading and creating DataFrame
+# Loading data from a CSV file into a pandas DataFrame
 data = pd.read_csv('export.csv', header=None)
 data.columns = ['Longitude', 'Latitude', 'Neighbourhood', 'Timestamp', 'Day', 'Hour']
 
-#List of neighbhorhoods in Toronto
+# Generating a list of neighborhood options for the dropdown menu
 neighborhood_options = sorted(
     [{'label': neighborhood, 'value': neighborhood} for neighborhood in data['Neighbourhood'].unique()],
     key=lambda x: x['label']
 )
+
+# Converting the 'Timestamp' column to datetime objects for easy handling
 data['Timestamp'] = pd.to_datetime(data['Timestamp'])
 
-# Extract the relevant columns for clustering (latitude and longitude)
+# Extracting coordinates for clustering
 coordinates = data[['Longitude', 'Latitude']]
 
-# Uncomment the next line and comment out the elbow method code
-
+# Function to determine the optimal number of clusters using the elbow method
 def choose_optimal_num_clusters(coordinates):
-    # Elbow method to find optimal number of clusters
     inertia_values = []
-    cluster_range = range(2, 51)  # You can adjust the range of cluster numbers
+    cluster_range = range(2, 51)  # Range of potential cluster sizes to explore
     for num_clusters in cluster_range:
-        kmeans = KMeans(n_clusters=num_clusters, random_state=42)  # Set a fixed random seed (e.g., 42)
+        kmeans = KMeans(n_clusters=num_clusters, random_state=42)
         kmeans.fit(coordinates)
-        inertia_values.append(kmeans.inertia_)
+        inertia_values.append(kmeans.inertia_)  # Inertia values are indicative of the fit quality
 
-    # Plot the elbow curve
+    # Plotting the elbow graph to visually find the optimal cluster number
     plt.figure(figsize=(10, 6))
     plt.plot(cluster_range, inertia_values, marker='o')
     plt.title('Elbow Method For Optimal k')
@@ -42,26 +41,31 @@ def choose_optimal_num_clusters(coordinates):
     plt.ylabel('Sum of Squared Distances (Inertia)')
     plt.grid(True)
     plt.show()
-
-    # Choose the number of clusters with the "elbow" point
     optimal_num_clusters = int(input("Enter the optimal number of clusters based on the elbow method: "))
     return optimal_num_clusters
 
+# This below line is commented out, but would be used to call the choose_optimal_num_clusters function
+# so the user can choose the optimal number of k-mean clusters using the elbow method.
+# however, since we have already performed the choosing of the number of clusters, it can
+# be defined manually (see report for more details)
 #optimal_num_clusters = choose_optimal_num_clusters(coordinates)
+
+# Number of clusters chosen with the elbow method
 optimal_num_clusters = 10
 
-# Perform k-means clustering with the optimal number of clusters
-kmeans = KMeans(n_clusters=optimal_num_clusters, random_state=42)  # Set the same random seed
+# Applying KMeans clustering to our data
+kmeans = KMeans(n_clusters=optimal_num_clusters, random_state=42)
 clusters = kmeans.fit_predict(coordinates)
 
-# Add cluster labels to your dataframe
+# Adding cluster information to the original DataFrame
 data['Cluster'] = clusters
 
+# Initializing the Dash application
 app = dash.Dash(__name__)
-# Create a Dash web application
+
+# Defining the layout of the Dash application
 app.layout = html.Div([
     html.H1("Toronto Cluster Map Dashboard"),
-
     dcc.DatePickerRange(
         id='date-picker-range',
         start_date=data['Timestamp'].min(),
@@ -69,58 +73,47 @@ app.layout = html.Div([
         display_format='YYYY-MM-DD',
         style={'margin': '10px'}
     ),
-
     html.Div(id='map-container'),
-    
     html.Div([
         dcc.Dropdown(
             id='neighborhood-dropdown',
             options=neighborhood_options,
-            value=None,  # Default value
+            value=None,
             placeholder="Select a neighborhood",
             style={'margin': '10px', 'width': '48%'}
         ),
-        
         dcc.Dropdown(
             id='neighborhood-dropdown-2',
             options=neighborhood_options,
-            value=None,  # Default value
+            value=None,
             placeholder="Select another neighborhood",
             style={'margin': '10px', 'width': '48%'}
         ),
     ], style={'display': 'flex', 'justify-content': 'space-between'}),
-    
     html.Div([
         html.Div(id='neighborhood-map-container', style={'display': 'inline-block', 'width': '50%'}),
         html.Div(id='neighborhood-map-container-2', style={'display': 'inline-block', 'width': '50%'}),
     ], style={'display': 'flex', 'justify-content': 'space-between'}),
-
-
 ])
 
-# Callback to update the map based on the selected date range and top N clusters
+    # Callback function to update the map based on user-selected date range
 @app.callback(
     Output('map-container', 'children'),
     [Input('date-picker-range', 'start_date'),
      Input('date-picker-range', 'end_date')]
 )
 def update_map(start_date, end_date):
+    # Filter the data to include only events within the selected date range
     filtered_data = data[(data['Timestamp'] >= start_date) & (data['Timestamp'] <= end_date)]
+    m = folium.Map(location=[43.70, -79.42], zoom_start=10)  # Initializing a Folium map centered around Toronto
 
-    # Create a Folium map centered at Toronto
-    m = folium.Map(location=[43.70, -79.42], zoom_start=10)
-
-    # Loop through clusters and add a Circle and Marker for each cluster
+    # Iterate through each cluster and add it to the map with Circle and Marker
     for cluster_id in filtered_data['Cluster'].unique():
         cluster_data = filtered_data[filtered_data['Cluster'] == cluster_id]
-
-        # Calculate the centroid of the cluster
         centroid_longitude, centroid_latitude = cluster_data[['Longitude', 'Latitude']].mean()
+        radius = np.sqrt(len(cluster_data)) * 35  # Dynamically adjust the radius based on cluster size
 
-        # Calculate the radius of the circle based on the cluster size
-        radius = np.sqrt(len(cluster_data)) * 35  # Adjust the scaling factor as needed
-
-        # Draw a circle around the centroid to represent the size of the cluster
+        # Visual representation of clusters using circles and markers
         Circle(
             location=[centroid_latitude, centroid_longitude],
             radius=radius,
@@ -128,19 +121,17 @@ def update_map(start_date, end_date):
             fill=True,
             fill_color='red'
         ).add_to(m)
-
-        # Add a Marker showing the number of points in the cluster
         Marker(
             location=[centroid_latitude, centroid_longitude],
             popup=f"Cluster: {cluster_id}<br>Points: {len(cluster_data)}",
             icon=None
         ).add_to(m)
 
-    # Convert the Folium map to HTML
+    # Embedding the Folium map into an HTML iframe for rendering in Dash
     map_html = m._repr_html_()
-
     return html.Iframe(srcDoc=map_html, width='100%', height='300px')
 
+# Callback for updating the map of a specific neighborhood based on user selection
 @app.callback(
     Output('neighborhood-map-container', 'children'),
     [Input('neighborhood-dropdown', 'value'),
@@ -148,36 +139,33 @@ def update_map(start_date, end_date):
      Input('date-picker-range', 'end_date')]
 )
 def update_neighborhood_map(selected_neighborhood, start_date, end_date):
+    # Handling the case where no neighborhood is selected
     if not selected_neighborhood:
         return "Please select a neighborhood."
 
+    # Filter the data to include only events in the selected neighborhood and date range
     neighborhood_data = data[(data['Neighbourhood'] == selected_neighborhood) & 
                              (data['Timestamp'] >= start_date) & 
                              (data['Timestamp'] <= end_date)]
 
-    # Perform k-means clustering for the selected neighborhood data
+    # Applying KMeans clustering specific to the selected neighborhood
     neighborhood_coordinates = neighborhood_data[['Longitude', 'Latitude']]
     kmeans_neighborhood = KMeans(n_clusters=optimal_num_clusters, random_state=42)
     neighborhood_clusters = kmeans_neighborhood.fit_predict(neighborhood_coordinates)
     neighborhood_data['Cluster'] = neighborhood_clusters
 
-    # Create a new Folium map for the selected neighborhood
-    m_neighborhood = folium.Map(location=[43.70, -79.42], zoom_start=10)  # Adjust zoom as needed
+    # Generate and configure a Folium map for the selected neighborhood
+    m_neighborhood = folium.Map(location=[43.70, -79.42], zoom_start=10)
 
-    # Loop through clusters and add a Circle and Marker for each cluster
+    # Adding each cluster to the neighborhood map with visual markers
     for cluster_id in range(optimal_num_clusters):
         cluster_data = neighborhood_data[neighborhood_data['Cluster'] == cluster_id]
-
         if cluster_data.empty:
-            continue
-
-        # Calculate the centroid of the cluster
+            continue  # Skip iteration if there's no data for a cluster
         centroid_longitude, centroid_latitude = cluster_data[['Longitude', 'Latitude']].mean()
+        radius = np.sqrt(len(cluster_data)) * 25  # Set the circle radius based on the number of points in the cluster
 
-        # Calculate the radius of the circle based on the cluster size
-        radius = np.sqrt(len(cluster_data)) * 25  # Adjust the scaling factor as needed
-
-        # Draw a circle around the centroid to represent the size of the cluster
+        # Visualize each cluster using a Circle and Marker on the map
         Circle(
             location=[centroid_latitude, centroid_longitude],
             radius=radius,
@@ -185,19 +173,17 @@ def update_neighborhood_map(selected_neighborhood, start_date, end_date):
             fill=True,
             fill_color='blue'
         ).add_to(m_neighborhood)
-
-        # Add a Marker showing the number of points in the cluster
         Marker(
             location=[centroid_latitude, centroid_longitude],
             popup=f"Cluster: {cluster_id}<br>Points: {len(cluster_data)}",
             icon=None
         ).add_to(m_neighborhood)
 
-    # Convert the Folium map to HTML
+    # Convert the Folium map of the neighborhood to HTML for rendering
     map_html_neighborhood = m_neighborhood._repr_html_()
-
     return html.Iframe(srcDoc=map_html_neighborhood, width='100%', height='300px')
 
+# Callback function for the second neighborhood dropdown selection
 @app.callback(
     Output('neighborhood-map-container-2', 'children'),
     [Input('neighborhood-dropdown-2', 'value'),
@@ -205,36 +191,33 @@ def update_neighborhood_map(selected_neighborhood, start_date, end_date):
      Input('date-picker-range', 'end_date')]
 )
 def update_neighborhood_map_2(selected_neighborhood, start_date, end_date):
+    # Provide feedback if the second neighborhood is not selected
     if not selected_neighborhood:
         return "Please select a second neighborhood for comparison."
 
+    # Filter data for the selected second neighborhood and date range
     neighborhood_data = data[(data['Neighbourhood'] == selected_neighborhood) & 
                              (data['Timestamp'] >= start_date) & 
                              (data['Timestamp'] <= end_date)]
-
-    # Perform k-means clustering for the selected neighborhood data
     neighborhood_coordinates = neighborhood_data[['Longitude', 'Latitude']]
+
+    # Applying KMeans clustering for the second neighborhood
     kmeans_neighborhood = KMeans(n_clusters=optimal_num_clusters, random_state=42)
     neighborhood_clusters = kmeans_neighborhood.fit_predict(neighborhood_coordinates)
     neighborhood_data['Cluster'] = neighborhood_clusters
 
-    # Create a new Folium map for the selected neighborhood
-    m_neighborhood = folium.Map(location=[43.70, -79.42], zoom_start=10)  # Adjust zoom as needed
+    # Creating a Folium map for the second neighborhood
+    m_neighborhood = folium.Map(location=[43.70, -79.42], zoom_start=10)
 
-    # Loop through clusters and add a Circle and Marker for each cluster
+    # Loop through the clusters in the second neighborhood and add them to the map
     for cluster_id in range(optimal_num_clusters):
         cluster_data = neighborhood_data[neighborhood_data['Cluster'] == cluster_id]
-
         if cluster_data.empty:
-            continue
-
-        # Calculate the centroid of the cluster
+            continue  # Skip empty clusters
         centroid_longitude, centroid_latitude = cluster_data[['Longitude', 'Latitude']].mean()
+        radius = np.sqrt(len(cluster_data)) * 25  # Adjust radius according to cluster size
 
-        # Calculate the radius of the circle based on the cluster size
-        radius = np.sqrt(len(cluster_data)) * 25  # Adjust the scaling factor as needed
-
-        # Draw a circle around the centroid to represent the size of the cluster
+        # Add visual markers for each cluster in the second neighborhood
         Circle(
             location=[centroid_latitude, centroid_longitude],
             radius=radius,
@@ -242,18 +225,16 @@ def update_neighborhood_map_2(selected_neighborhood, start_date, end_date):
             fill=True,
             fill_color='blue'
         ).add_to(m_neighborhood)
-
-        # Add a Marker showing the number of points in the cluster
         Marker(
             location=[centroid_latitude, centroid_longitude],
             popup=f"Cluster: {cluster_id}<br>Points: {len(cluster_data)}",
             icon=None
         ).add_to(m_neighborhood)
 
-    # Convert the Folium map to HTML
+    # Embed the second neighborhood map into HTML for display
     map_html_neighborhood = m_neighborhood._repr_html_()
-
     return html.Iframe(srcDoc=map_html_neighborhood, width='100%', height='300px')
-# Run the web application
+
+# Start the Dash application server
 if __name__ == '__main__':
     app.run_server(debug=False)
